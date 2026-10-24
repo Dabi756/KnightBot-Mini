@@ -5,13 +5,17 @@
 const fs = require('fs');
 const path = require('path');
 
-function registerRegistryCommands(commands, modulePath, label) {
+function registerRegistryCommands(commands, modulePath, label, { noOverwrite = false } = {}) {
   try {
     const list = require(modulePath);
     for (const cmd of list) {
       if (!cmd?.name) continue;
+      if (noOverwrite && commands.has(cmd.name)) continue;
       commands.set(cmd.name, cmd);
-      cmd.aliases?.forEach((alias) => commands.set(alias, cmd));
+      cmd.aliases?.forEach((alias) => {
+        if (noOverwrite && commands.has(alias)) return;
+        commands.set(alias, cmd);
+      });
     }
   } catch (error) {
     console.error(`Error loading ${label} commands:`, error.message);
@@ -19,11 +23,16 @@ function registerRegistryCommands(commands, modulePath, label) {
 }
 
 function registerFunCommands(commands) {
-  registerRegistryCommands(commands, './funCommands', 'fun');
+  // Don't clobber file-based games (coinflip, rps, …)
+  registerRegistryCommands(commands, './funCommands', 'fun', { noOverwrite: true });
 }
 
 function registerEconomyCommands(commands) {
-  registerRegistryCommands(commands, './economyCommands', 'economy');
+  registerRegistryCommands(commands, './economyCommands', 'economy', { noOverwrite: true });
+}
+
+function registerRpgCommands(commands) {
+  registerRegistryCommands(commands, './rpgCommands', 'rpg', { noOverwrite: true });
 }
 
 const loadCommands = () => {
@@ -44,15 +53,17 @@ const loadCommands = () => {
       
       files.forEach(file => {
         try {
-          const command = require(path.join(categoryPath, file));
-          if (command.name) {
+          const mod = require(path.join(categoryPath, file));
+          const list = Array.isArray(mod) ? mod : (mod?.name ? [mod] : []);
+          list.forEach((command) => {
+            if (!command?.name) return;
             commands.set(command.name, command);
             if (command.aliases) {
               command.aliases.forEach(alias => {
                 commands.set(alias, command);
               });
             }
-          }
+          });
         } catch (error) {
           console.error(`Error loading command ${file}:`, error.message);
         }
@@ -62,8 +73,9 @@ const loadCommands = () => {
   
   registerFunCommands(commands);
   registerEconomyCommands(commands);
+  registerRpgCommands(commands);
   return commands;
 };
 
-module.exports = { loadCommands, registerFunCommands, registerEconomyCommands };
+module.exports = { loadCommands, registerFunCommands, registerEconomyCommands, registerRpgCommands };
 
